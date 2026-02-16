@@ -26,7 +26,7 @@ BASE_URL = "https://hub.weirdhost.xyz/server/"
 DOMAIN = "hub.weirdhost.xyz"
 
 # 续期阈值（天数），只有剩余时间小于此值才执行续期
-RENEW_THRESHOLD_DAYS = int(os.environ.get("RENEW_THRESHOLD_DAYS", "2"))
+RENEW_THRESHOLD_DAYS = int(os.environ.get("RENEW_THRESHOLD_DAYS", "1"))
 
 
 # ============================================================
@@ -275,7 +275,7 @@ def is_logged_in(sb):
             return False
         if get_expiry_from_page(sb) != "Unknown":
             return True
-        if sb.is_element_present("//button//span[contains(text(), '시간추가')]"):
+        if sb.is_element_present("//button//span[contains(text(), '시간 추가')]"):
             return True
         return False
     except:
@@ -533,7 +533,7 @@ def check_popup_still_open(sb):
             var buttons = document.querySelectorAll('button');
             for (var i = 0; i < buttons.length; i++) {
                 var text = buttons[i].innerText || '';
-                if (text.includes('시간추가') && !text.includes('DELETE')) {
+                if (text.includes('시간 추가') && !text.includes('DELETE')) {
                     var rect = buttons[i].getBoundingClientRect();
                     if (rect.x > 200 && rect.width > 0) {
                         return true;
@@ -889,9 +889,9 @@ def process_single_account(sb, account, account_index):
         print("\n[步骤4] 点击侧栏续期按钮")
         random_delay(1.0, 2.0)
 
-        sidebar_btn_xpath = "//button//span[contains(text(), '시간추가')]/parent::button"
+        sidebar_btn_xpath = "//button//span[contains(text(), '시간 추가')]/parent::button"
         if not sb.is_element_present(sidebar_btn_xpath):
-            sidebar_btn_xpath = "//button[contains(., '시간추가')]"
+            sidebar_btn_xpath = "//button[contains(., '시간 추가')]"
         
         if not sb.is_element_present(sidebar_btn_xpath):
             screenshot_path = f"{screenshot_prefix}_no_button.png"
@@ -971,7 +971,7 @@ def send_summary_report(results):
     error_count = sum(1 for r in results if r["status"] in ["error", "timeout", "unknown", "cooldown"])  # 加上 cooldow 万一有冷却：会被统计到失败数量里，不会漏掉
     
     lines = [
-        "🎁 <b>Weirdhost 多账号续期报告</b>",
+        "🎁 <b>Weirdhost java续期</b>",
         "",
         f"📊 共 {len(results)} 个账号",
       # f"✅ 成功: {success_count}  ⏭️ 跳过: {skipped_count}  ⏳ 冷却: {cooldown_count}  ❌ 失败: {error_count}",
