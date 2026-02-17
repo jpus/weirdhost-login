@@ -11,7 +11,7 @@ import random
 import re
 import subprocess
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import unquote
 
 from seleniumbase import SB
@@ -28,6 +28,8 @@ DOMAIN = "hub.weirdhost.xyz"
 # 续期阈值（天数），只有剩余时间小于此值才执行续期
 RENEW_THRESHOLD_DAYS = int(os.environ.get("RENEW_THRESHOLD_DAYS", "1"))
 
+# 定义韩国时区（KST，UTC+9）
+KST = timezone(timedelta(hours=9))
 
 # ============================================================
 # 工具函数
@@ -111,57 +113,82 @@ def build_server_url(server_id):
 
 
 def calculate_remaining_time(expiry_str):
+    """计算剩余时间（使用韩国时区）"""
     try:
-        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]:
-            try:
-                expiry_dt = datetime.strptime(expiry_str.strip(), fmt)
-                diff = expiry_dt - datetime.now()
-                if diff.total_seconds() < 0:
-                    return "⚠️ 已过期"
-                days = diff.days
-                hours = diff.seconds // 3600
-                minutes = (diff.seconds % 3600) // 60
-                parts = []
-                if days > 0:
-                    parts.append(f"{days}天")
-                if hours > 0:
-                    parts.append(f"{hours}小时")
-                if minutes > 0 and days == 0:
-                    parts.append(f"{minutes}分钟")
-                return " ".join(parts) if parts else "不到1分钟"
-            except ValueError:
-                continue
-        return "无法解析"
-    except:
+        expiry_dt = parse_expiry_to_datetime(expiry_str)
+        if not expiry_dt:
+            return "无法解析"
+        
+        # 获取当前韩国时间
+        now_kst = datetime.now(KST)
+        
+        # 确保 expiry_dt 有时区信息
+        if expiry_dt.tzinfo is None:
+            # 如果没有时区信息，假设是韩国时间
+            expiry_dt = expiry_dt.replace(tzinfo=KST)
+        
+        diff = expiry_dt - now_kst
+        if diff.total_seconds() < 0:
+            return "⚠️ 已过期"
+        
+        days = diff.days
+        hours = diff.seconds // 3600
+        minutes = (diff.seconds % 3600) // 60
+        
+        parts = []
+        if days > 0:
+            parts.append(f"{days}天")
+        if hours > 0:
+            parts.append(f"{hours}小时")
+        if minutes > 0 and days == 0:
+            parts.append(f"{minutes}分钟")
+        
+        return " ".join(parts) if parts else "不到1分钟"
+    except Exception as e:
+        print(f"[!] 计算剩余时间失败: {e}")
         return "计算失败"
 
 
 def parse_expiry_to_datetime(expiry_str):
+    """将到期字符串解析为带韩国时区的datetime对象"""
     if not expiry_str or expiry_str == "Unknown":
         return None
+    
     for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]:
         try:
-            return datetime.strptime(expiry_str.strip(), fmt)
+            # 解析为 naive datetime
+            dt = datetime.strptime(expiry_str.strip(), fmt)
+            # 添加韩国时区信息
+            return dt.replace(tzinfo=KST)
         except ValueError:
             continue
     return None
 
 
 def get_remaining_days(expiry_str):
-    """获取剩余天数（浮点数）"""
+    """获取剩余天数（使用韩国时区）"""
     expiry_dt = parse_expiry_to_datetime(expiry_str)
     if not expiry_dt:
         return None
-    diff = expiry_dt - datetime.now()
+    
+    # 获取当前韩国时间
+    now_kst = datetime.now(KST)
+    diff = expiry_dt - now_kst
     return diff.total_seconds() / 86400
 
 
 def should_renew(expiry_str):
-    """判断是否需要续期"""
+    """判断是否需要续期（基于韩国时间）"""
     remaining_days = get_remaining_days(expiry_str)
     if remaining_days is None:
+        # 如果无法解析到期时间，默认执行续期尝试
         return True
     return remaining_days <= RENEW_THRESHOLD_DAYS
+
+
+def get_kst_time_str():
+    """获取当前韩国时间的字符串表示"""
+    return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def random_delay(min_sec=0.5, max_sec=2.0):
@@ -732,11 +759,11 @@ def check_and_update_cookie(sb, cookie_env, original_cookie_value):
 
 
 # ============================================================
-# 单账号处理（优化版）
+# 单账号处理（优化版，统一韩国时间）
 # ============================================================
 
 def process_single_account(sb, account, account_index):
-    """处理单个账号 - 优化版"""
+    """处理单个账号 - 优化版，使用韩国时间"""
     remark = account.get("remark", f"账号{account_index + 1}")
     server_id = account.get("id", "").strip()
     cookie_env = account.get("cookie_env", "").strip()
@@ -760,6 +787,7 @@ def process_single_account(sb, account, account_index):
     
     print(f"\n{'=' * 60}")
     print(f"处理账号 [{account_index + 1}]: {display_name}")
+    print(f"当前韩国时间: {get_kst_time_str()}")
     print(f"{'=' * 60}")
     
     # ===== 验证配置 =====
@@ -861,10 +889,10 @@ def process_single_account(sb, account, account_index):
         print(f"[*] 到期: {original_expiry}")
         print(f"[*] 剩余: {remaining}")
         if remaining_days is not None:
-            print(f"[*] 剩余天数: {remaining_days:.2f} 天")
+            print(f"[*] 剩余天数: {remaining_days:.2f} 天 (韩国时间)")
 
-        # ===== 步骤3: 判断是否需要续期 =====
-        print(f"\n[步骤3] 检查是否需要续期 (阈值: {RENEW_THRESHOLD_DAYS} 天)")
+        # ===== 步骤3: 判断是否需要续期（基于韩国时间）=====
+        print(f"\n[步骤3] 检查是否需要续期 (阈值: {RENEW_THRESHOLD_DAYS} 天，基于韩国时间)")
         
         need_renew = should_renew(original_expiry)
         
@@ -965,16 +993,17 @@ def process_single_account(sb, account, account_index):
 def send_summary_report(results):
     """发送汇总报告到 Telegram（完整信息版）"""
     success_count = sum(1 for r in results if r["status"] == "success")
-  # cooldown_count = sum(1 for r in results if r["status"] == "cooldown")
     skipped_count = sum(1 for r in results if r["status"] == "skipped")
-  # error_count = sum(1 for r in results if r["status"] in ["error", "timeout", "unknown"])
-    error_count = sum(1 for r in results if r["status"] in ["error", "timeout", "unknown", "cooldown"])  # 加上 cooldow 万一有冷却：会被统计到失败数量里，不会漏掉
+    error_count = sum(1 for r in results if r["status"] in ["error", "timeout", "unknown", "cooldown"])
+    
+    # 获取当前韩国时间用于报告
+    kst_time = get_kst_time_str()
     
     lines = [
-        "🎁 <b>Weirdhost java续期</b>",
+        "🎁 <b>Weirdhost 自动续期</b>",
+        f"📅 韩国时间: {kst_time}",
         "",
         f"📊 共 {len(results)} 个账号",
-      # f"✅ 成功: {success_count}  ⏭️ 跳过: {skipped_count}  ⏳ 冷却: {cooldown_count}  ❌ 失败: {error_count}",
         f"✅ 成功: {success_count}  ⏭️ 跳过: {skipped_count}  ❌ 失败: {error_count}",
         "",
         "━━━━━━━━━━━━━━━━━━━━━━"
@@ -1054,12 +1083,13 @@ def send_summary_report(results):
     else:
         sync_tg_notify(message)
 
+
 # ============================================================
 # 主函数
 # ============================================================
 
 def add_server_time():
-    """主函数 - 多账号版本（优化版）"""
+    """主函数 - 多账号版本（统一韩国时间）"""
     accounts = parse_accounts()
     
     if not accounts:
@@ -1067,9 +1097,10 @@ def add_server_time():
         return
     
     print("=" * 60)
-    print(f"Weirdhost 自动续期 v15 (隐私保护版)")
+    print(f"Weirdhost 自动续期 v16 (韩国时间版)")
     print(f"共 {len(accounts)} 个账号")
-    print(f"续期阈值: {RENEW_THRESHOLD_DAYS} 天")
+    print(f"续期阈值: {RENEW_THRESHOLD_DAYS} 天 (基于韩国时间)")
+    print(f"当前韩国时间: {get_kst_time_str()}")
     print("=" * 60)
     
     results = []
