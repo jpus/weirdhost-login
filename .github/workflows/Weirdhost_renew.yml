@@ -38,6 +38,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install seleniumbase aiohttp pynacl
 
+      - name: Set up WARP
+        uses: fscarmen/warp-on-actions@v1.4
+        with:
+           stack: dual        # Optional. Support [ ipv4, ipv6, dual ]. Default is dual.
+           mode: client    # Optional. Support [ wireguard, client ]. Default is wireguard.
+
       - name: 运行续期脚本
         env:
           ACCOUNTS: ${{ secrets.WEIRDHOST_ACCOUNTS }}
